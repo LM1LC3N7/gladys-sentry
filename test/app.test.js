@@ -120,7 +120,7 @@ test('start: Discovery of the projects; the first round publishes the created de
   );
   assert.equal(last(gladys, WEB, FEATURES.UNRESOLVED), 2);
   assert.equal(last(gladys, WEB, FEATURES.LATEST_ISSUE), 'Error 11');
-  assert.equal(last(gladys, WEB, FEATURES.ERRORS_DAY), 96);
+  assert.equal(last(gladys, WEB, FEATURES.ERRORS_DAY), 98, '24 buckets and half of the 25th');
   // 12:30: the current hour (4) plus half of the previous one (2).
   assert.equal(last(gladys, WEB, FEATURES.ERRORS_HOUR), 6);
   assert.equal(last(gladys, API, FEATURES.UNRESOLVED), 0);
@@ -274,7 +274,7 @@ test('new issue: never at the first reading, nor for an issue older than 2 h (Se
 test('error spike: fires once on the rise, again only after falling under half the threshold', async (t) => {
   const { gladys, sentry, clock } = await setup(t, { config: { spike_threshold: 100 } });
   const counts = sentry.counts.get('1');
-  counts[23] = 150; // the current hour
+  counts[24] = 150; // the current hour
   await clock.advance(10 * MIN);
   const spikes = events(gladys, 'error_spike');
   assert.equal(spikes.length, 1);
@@ -282,18 +282,18 @@ test('error spike: fires once on the rise, again only after falling under half t
   assert.equal(spikes[0].data.threshold, 100);
   assert.equal(spikes[0].data.usual_per_hour, 4);
   assert.ok(spikes[0].data.errors_last_hour >= 150);
-  counts[23] = 160;
+  counts[24] = 160;
   await clock.advance(10 * MIN);
   assert.equal(events(gladys, 'error_spike').length, 1, 'one event per spike');
-  counts[22] = 4;
-  counts[23] = 60; // over half the threshold: still the same spike
+  counts[23] = 4;
+  counts[24] = 60; // over half the threshold: still the same spike
   await clock.advance(10 * MIN);
-  counts[23] = 120;
+  counts[24] = 120;
   await clock.advance(10 * MIN);
   assert.equal(events(gladys, 'error_spike').length, 1);
-  counts[23] = 20;
+  counts[24] = 20;
   await clock.advance(10 * MIN);
-  counts[23] = 130;
+  counts[24] = 130;
   await clock.advance(10 * MIN);
   assert.equal(events(gladys, 'error_spike').length, 2);
 });
@@ -303,12 +303,12 @@ test('error spike: not at the first reading, not under three times the usual hou
   const sentry = createFakeSentry({ clock });
   sentry.counts.set(
     '1',
-    Array.from({ length: 24 }, () => 200),
+    Array.from({ length: 25 }, () => 200),
   );
-  sentry.counts.get('1')[23] = 500;
+  sentry.counts.get('1')[24] = 500;
   const { gladys } = await setup(t, { clock, sentry });
   assert.equal(events(gladys, 'error_spike').length, 0, 'first reading');
-  sentry.counts.get('1')[23] = 550; // 550 + 100 < 3 x 200
+  sentry.counts.get('1')[24] = 550; // 550 + 100 < 3 x 200
   await clock.advance(10 * MIN);
   assert.equal(events(gladys, 'error_spike').length, 0);
 });
@@ -389,8 +389,10 @@ test('a failing secondary reading is spaced out (doubling), never blocking the o
   await clock.advance(10 * MIN);
   assert.equal(sentry.count('stats'), statsBefore + 2);
   await clock.advance(10 * MIN);
-  assert.equal(sentry.count('stats'), statsBefore + 2, 'waits twice the interval');
-  sentry.issues.get('1').unshift(issue(40, { firstSeen: NOW + 15 * MIN }));
+  assert.equal(sentry.count('stats'), statsBefore + 4, 'tried again at the next round');
+  await clock.advance(10 * MIN);
+  assert.equal(sentry.count('stats'), statsBefore + 4, 'then every 2, 4... rounds');
+  sentry.issues.get('1').unshift(issue(40, { firstSeen: NOW + 35 * MIN }));
   await clock.advance(10 * MIN);
   assert.equal(last(gladys, WEB, FEATURES.UNRESOLVED), 3);
 });
@@ -414,51 +416,54 @@ test('HTTP 429: every request waits Retry-After (60 s at least), kept in /data a
   assert.ok(sentry.log.length > sent);
 });
 
-test('HTTP 5xx: every request pauses a minute, doubling while it lasts; a success resets it', async (t) => {
+test('HTTP 5xx: one project only spaces it out; several projects pause every request, doubling; a full round resets it', async (t) => {
   const { gladys, sentry, clock } = await setup(t);
   sentry.fail.issues = [503];
+  await clock.advance(10 * MIN);
+  assert.doesNotMatch(statusText(gladys), /slow down/, 'one project failing: no pause');
+  assert.equal(sentry.count('issues'), 4, 'the other project read');
+  sentry.fail.issues = [503, 503];
   await clock.advance(10 * MIN);
   assert.match(statusText(gladys), /next request in 1 min/);
   const a = sentry.log.length;
   await clock.advance(9 * MIN);
   assert.equal(sentry.log.length, a, 'the rest waits the next round');
-  sentry.fail.issues = [502];
+  sentry.fail.stats = [502, 502];
   await clock.advance(1 * MIN);
   assert.match(statusText(gladys), /next request in 2 min/, 'doubled');
-  sentry.fail.issues = [];
+  sentry.fail.stats = [];
   await clock.advance(10 * MIN);
-  sentry.fail.issues = [500];
+  sentry.fail.stats = [500, 500];
   await clock.advance(10 * MIN);
-  assert.match(statusText(gladys), /next request in 1 min/, 'reset by the successes');
+  assert.match(statusText(gladys), /next request in 1 min/, 'reset by a full round');
   assert.ok(timersSane(clock));
 });
 
-test('rate limit headers: no request left -> the next waits for the reset; a far reset ends the round, resumed where it stopped', async (t) => {
+test('rate limit headers, per route: no request left -> the next of that route waits for the reset; a far reset ends the round, resumed where it stopped', async (t) => {
   const clock = fakeClock({ wall: NOW });
   const sentry = createFakeSentry({ clock });
   sentry.rate = { remaining: 0, resetIn: 5 };
   const { gladys, app } = await setup(t, { clock, sentry });
   await clock.advance(30_000);
-  const times = sentry.log.map((r) => r.at);
-  assert.equal(times.length, 5);
-  for (let i = 1; i < times.length; i += 1) assert.ok(times[i] - times[i - 1] >= 4_900, 'waited');
-  assert.equal(sentry.count('issues'), 2);
+  assert.equal(sentry.log.length, 5);
+  for (const route of ['issues', 'stats']) {
+    const times = sentry.log.filter((r) => r.route === route).map((r) => r.at);
+    assert.equal(times.length, 2);
+    assert.ok(times[1] - times[0] >= 4_900, `${route} waited`);
+  }
   const before = sentry.log.length;
-  // Spent on the third request of the round (the issues of the second project).
-  sentry.rate = { remaining: 0, resetIn: 600, from: before + 2 };
+  // Spent from the first request of the round (the issues of `api`): the
+  // issues of `web` cannot go, the round ends there.
+  sentry.rate = { remaining: 0, resetIn: 600, from: before };
   await clock.advance(10 * MIN);
-  assert.equal(sentry.log.length, before + 3, 'the round ends when the window is spent');
+  assert.equal(sentry.log.length, before + 2, 'the round ends when the window is spent');
   assert.equal(app.round, null, 'never a wait of 10 min inside a round');
-  const stoppedAt = sentry.log.at(-1).url;
   sentry.rate = null;
   await clock.advance(10 * MIN);
   // The next round starts with the project where the last one stopped.
-  const next = sentry.log.slice(before + 3);
+  const next = sentry.log.slice(before + 2);
   assert.ok(next.length > 0);
-  assert.equal(
-    new URL(next[0].url).searchParams.get('project'),
-    new URL(stoppedAt).searchParams.get('project'),
-  );
+  assert.equal(new URL(next[0].url).searchParams.get('project'), '1');
   assert.ok(gladys.fake.connectionStatus.connected);
 });
 
@@ -525,7 +530,7 @@ test('unknown stays unknown: no X-Hits and a full page -> the unresolved count i
   sentry.hits = false;
   sentry.issues.set(
     '1',
-    Array.from({ length: 30 }, (_, i) => issue(500 - i, { firstSeen: NOW - (i + 1) * HOUR })),
+    Array.from({ length: 120 }, (_, i) => issue(500 - i, { firstSeen: NOW - (i + 1) * HOUR })),
   );
   const { gladys } = await setup(t, { clock, sentry });
   assert.equal(last(gladys, WEB, FEATURES.UNRESOLVED), undefined);
@@ -569,7 +574,7 @@ test('error spike: after a gap (no reading for more than two intervals), the sta
   sentry.fail.stats = 'notjson'; // spaced out: 20, 40, 60 min...
   await clock.advance(40 * MIN);
   sentry.fail.stats = undefined;
-  sentry.counts.get('1')[23] = 500;
+  sentry.counts.get('1')[24] = 500;
   await clock.advance(60 * MIN);
   assert.ok(sentry.count('stats') > 2);
   assert.equal(events(gladys, 'error_spike').length, 0);
@@ -642,4 +647,169 @@ test('a stop leaves no timer and sends nothing after', async (t) => {
   );
   await clock.advance(HOUR);
   assert.equal(sentry.log.length, sent);
+});
+
+test('errors of the last hour: a constant rate reads constant across the hour (Date header, never `end`)', async (t) => {
+  const clock = fakeClock({ wall: NOW });
+  const sentry = createFakeSentry({ clock });
+  sentry.perHour.set('1', 600);
+  const { gladys } = await setup(t, { clock, sentry, config: { refresh_interval: '300' } });
+  const seen = [];
+  for (let i = 0; i < 24; i += 1) {
+    await clock.advance(5 * MIN);
+    seen.push(last(gladys, WEB, FEATURES.ERRORS_HOUR));
+  }
+  for (const value of seen) assert.ok(value >= 590 && value <= 610, `${seen}`);
+  assert.ok(Math.abs(last(gladys, WEB, FEATURES.ERRORS_DAY) - 14_400) <= 10);
+});
+
+test('error spike: a continuous incident fires once in 6 h, never again at each hour', async (t) => {
+  const clock = fakeClock({ wall: NOW });
+  const sentry = createFakeSentry({ clock });
+  const start = NOW + 30 * MIN;
+  sentry.perHour.set('1', (hour) => (hour >= Math.floor(start / HOUR) * HOUR ? 180 : 5));
+  const { gladys } = await setup(t, {
+    clock,
+    sentry,
+    config: { refresh_interval: '300', spike_threshold: 100 },
+  });
+  await clock.advance(6 * HOUR);
+  assert.equal(events(gladys, 'error_spike').length, 1);
+});
+
+test('a project in 5xx or 429 never starves the others', async (t) => {
+  for (const [route, status] of [
+    ['issues', 504],
+    ['stats', 500],
+    ['issues', 429],
+  ]) {
+    const clock = fakeClock({ wall: NOW });
+    const sentry = createFakeSentry({ clock });
+    const original = sentry.request;
+    // `api` (read first, in slug order) fails for ever on one route.
+    sentry.request = async (url, options) => {
+      const u = new URL(url);
+      if (
+        u.searchParams.get('project') === '2' &&
+        u.pathname.includes(route === 'issues' ? '/issues/' : '/stats_v2/')
+      ) {
+        sentry.log.push({ route, url, token: options.token, at: clock.monotonic() });
+        return {
+          status,
+          headers: { date: new Date(clock.now()).toUTCString() },
+          body: Buffer.from('{}'),
+        };
+      }
+      return original(url, options);
+    };
+    const { gladys } = await setup(t, { clock, sentry });
+    await clock.advance(2 * HOUR);
+    const webReads = sentry.log.filter((r) => r.url.includes('project=1')).length;
+    assert.ok(webReads >= 8, `${route} ${status}: web read ${webReads} times`);
+    assert.ok(last(gladys, WEB, FEATURES.UNRESOLVED) === 2);
+  }
+});
+
+test('unresolved count: X-Hits at its cap (X-Max-Hits) is unknown, never published as exact', async (t) => {
+  const clock = fakeClock({ wall: NOW });
+  const sentry = createFakeSentry({ clock });
+  sentry.issues.set(
+    '1',
+    Array.from({ length: 1500 }, (_, i) => issue(5000 - i, { firstSeen: NOW - (i + 1) * MIN })),
+  );
+  sentry.issues.set(
+    '2',
+    Array.from({ length: 300 }, (_, i) => issue(9000 - i, { firstSeen: NOW - (i + 1) * MIN })),
+  );
+  const { gladys } = await setup(t, { clock, sentry });
+  assert.equal(last(gladys, WEB, FEATURES.UNRESOLVED), undefined);
+  assert.equal(last(gladys, API, FEATURES.UNRESOLVED), 300, 'under the cap: the estimate');
+});
+
+test('new issue: resolving the newest of a burst never announces the older ones', async (t) => {
+  const clock = fakeClock({ wall: NOW });
+  const sentry = createFakeSentry({ clock });
+  // A broken deployment: 40 issues in 40 minutes, already there at the first reading.
+  sentry.issues.set(
+    '1',
+    Array.from({ length: 40 }, (_, i) => issue(700 - i, { firstSeen: NOW - (i + 1) * MIN })),
+  );
+  const { gladys } = await setup(t, { clock, sentry });
+  sentry.issues.get('1').splice(0, 5); // the 5 newest resolved
+  await clock.advance(10 * MIN);
+  sentry.issues.get('1').splice(0, 20);
+  await clock.advance(10 * MIN);
+  assert.equal(events(gladys, 'new_issue').length, 0);
+});
+
+test('the project list: 403 or a redirect is never a refusal; spaced out, status said', async (t) => {
+  for (const failure of [403, { status: 302, headers: { location: 'https://evil.example/' } }]) {
+    const clock = fakeClock({ wall: NOW });
+    const sentry = createFakeSentry({ clock });
+    sentry.fail.projects = failure;
+    const { gladys, dataDir } = await setup(t, { clock, sentry });
+    assert.equal(storeOf(dataDir).refused, null);
+    assert.equal(gladys.fake.connectionStatus.connected, false);
+    assert.match(statusText(gladys), failure === 403 ? /HTTP 403\): the token needs/ : /redirect/);
+    await clock.advance(10 * MIN);
+    assert.equal(sentry.count('projects'), 2, 'tried again');
+    await clock.advance(10 * MIN);
+    assert.equal(sentry.count('projects'), 2, 'then spaced out');
+  }
+});
+
+test('pauses are bounded: at least a minute, 6 h at most, a huge Retry-After capped', async (t) => {
+  for (const [retry, text] of [
+    ['0', /next request in 1 min/],
+    ['99999', /next request in 360 min/],
+    ['99999999999999', /next request in 360 min/],
+  ]) {
+    const clock = fakeClock({ wall: NOW });
+    const sentry = createFakeSentry({ clock });
+    sentry.fail.issues = [{ status: 429, headers: { 'retry-after': retry } }];
+    const { gladys } = await setup(t, { clock, sentry });
+    assert.match(statusText(gladys), text);
+  }
+});
+
+test('/data: references of another organization dropped; those of unfollowed projects purged', async (t) => {
+  const { sentry, clock, dataDir, app } = await setup(t);
+  assert.ok(storeOf(dataDir).refs['1'] && storeOf(dataDir).refs['2']);
+  await app.stop();
+  const filtered = await setup(t, { clock, sentry, dataDir, config: { projects: 'web' } });
+  await clock.advance(10 * MIN);
+  assert.deepEqual(Object.keys(storeOf(dataDir).refs), ['1']);
+  await filtered.app.stop();
+  const other = createFakeSentry({ clock, organization: 'other' });
+  other.projects = [project(7, 'x')];
+  other.issues = new Map([['7', []]]);
+  await setup(t, { clock, sentry: other, dataDir, config: { organization: 'other' } });
+  await clock.advance(10 * MIN);
+  assert.match(storeOf(dataDir).scope, /other$/);
+  assert.deepEqual(Object.keys(storeOf(dataDir).refs), ['7'], 'nothing of the old organization');
+});
+
+test('/data readable only later: the references of another organization are dropped then too', async (t) => {
+  const clock = fakeClock({ wall: NOW });
+  const sentry = createFakeSentry({ clock });
+  const dataDir = mkdtempSync(join(tmpdir(), 'sentry-late-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  writeFileSync(
+    join(dataDir, STORE_FILE),
+    JSON.stringify({ scope: 'https://sentry.io\nold', refs: { 1: { since: 5, ids: ['11'] } } }),
+  );
+  let fail = true;
+  const real = (await import('node:fs/promises')).readFile;
+  const fs = {
+    readFile: async (...args) => {
+      if (fail) throw Object.assign(new Error('EIO'), { code: 'EIO' });
+      return real(...args);
+    },
+  };
+  await setup(t, { clock, sentry, dataDir, fs });
+  fail = false;
+  await clock.advance(10_000);
+  const store = storeOf(dataDir);
+  assert.equal(store.scope, 'https://sentry.io\nacme');
+  assert.deepEqual(store.refs, {});
 });

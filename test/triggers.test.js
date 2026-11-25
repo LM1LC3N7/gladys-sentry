@@ -10,7 +10,12 @@ const i = (id, firstSeen) => ({ id: String(id), firstSeen });
 test('new issues: the first reading is only a reference', () => {
   const { fresh, ref } = detectNewIssues(null, [i(2, NOW - HOUR), i(1, NOW - 5 * HOUR)], NOW);
   assert.deepEqual(fresh, []);
-  assert.deepEqual(ref, { since: NOW - HOUR, ids: ['2', '1'] });
+  assert.deepEqual(ref, { since: NOW, ids: ['2', '1'] }, 'the time of the reading (Sentry clock)');
+  assert.equal(
+    detectNewIssues(null, [i(2, NOW - HOUR)], null).ref.since,
+    NOW - HOUR,
+    'no Date: the newest',
+  );
   assert.deepEqual(detectNewIssues(null, [], NOW).ref, { since: NOW, ids: [] });
   assert.equal(detectNewIssues(null, [], null).ref, null, 'no reference without any date');
 });
@@ -29,7 +34,7 @@ test('new issues: unseen, after the reference (an hour of late arrival), younger
     fresh.map((x) => x.id),
     ['5', '4'],
   );
-  assert.equal(next.since, NOW - 1 * MIN);
+  assert.equal(next.since, NOW);
   assert.deepEqual(next.ids.slice(0, 5), ['5', '4', '3', '2', '1']);
   // Sentry's clock says 3 h later: too old.
   assert.deepEqual(detectNewIssues(ref, list, NOW + 3 * HOUR).fresh, []);
@@ -39,13 +44,18 @@ test('new issues: unseen, after the reference (an hour of late arrival), younger
   // Without Sentry's clock, the reference alone decides.
   assert.equal(detectNewIssues(ref, [i(9, NOW)], null).fresh.length, 1);
   // The reference never goes back.
-  assert.equal(detectNewIssues(ref, [i(9, NOW - 20 * MIN)], NOW).ref.since, NOW - 10 * MIN);
+  assert.equal(detectNewIssues(ref, [i(9, NOW - 20 * MIN)], null).ref.since, NOW - 10 * MIN);
+  assert.equal(detectNewIssues(ref, [], NOW - HOUR).ref.since, NOW - 10 * MIN);
+});
+
+test('new issues: an issue without a date is never new, whatever the reference', () => {
+  assert.deepEqual(detectNewIssues({ since: 0, ids: [] }, [i(3, null)], null).fresh, []);
 });
 
 test('new issues: the remembered ids are bounded', () => {
-  const ref = { since: NOW, ids: Array.from({ length: 60 }, (_, k) => String(1000 + k)) };
+  const ref = { since: NOW, ids: Array.from({ length: 200 }, (_, k) => String(1000 + k)) };
   const { ref: next } = detectNewIssues(ref, [i(1, NOW + MIN)], NOW + MIN);
-  assert.equal(next.ids.length, 60);
+  assert.equal(next.ids.length, 200);
   assert.equal(next.ids[0], '1');
 });
 

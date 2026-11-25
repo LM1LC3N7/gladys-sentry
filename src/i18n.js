@@ -77,8 +77,8 @@ export const T = {
       fr: "Sentry a refusé le jeton (HTTP 401) : saisissez un jeton valide, ou appuyez sur « Tester la connexion ». Rien n'est envoyé d'ici là.",
     },
     forbidden: {
-      en: 'Sentry denies the project list (HTTP 403): the token needs the org:read, project:read and event:read scopes. Tried again later.',
-      fr: 'Sentry refuse la liste des projets (HTTP 403) : le jeton doit avoir les droits org:read, project:read et event:read. Nouvel essai plus tard.',
+      en: 'Sentry denies the project list (HTTP 403): the token needs the org:read and event:read scopes. Tried again later.',
+      fr: 'Sentry refuse la liste des projets (HTTP 403) : le jeton doit avoir les droits org:read et event:read. Nouvel essai plus tard.',
     },
     notFound: {
       en: 'Organization not found (HTTP 404): check its slug and the region (US or EU). Tried again later.',

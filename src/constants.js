@@ -58,10 +58,10 @@ export const LIMITS = Object.freeze({
   /** Project pages read at most (100 projects each, the API maximum). */
   PROJECT_PAGES: 3,
   PROJECT_PAGE: 100,
-  /** Unresolved issues read per project and round (newest first). */
-  ISSUES: 25,
+  /** Unresolved issues read per project and round (newest first, the API maximum). */
+  ISSUES: 100,
   /** Issue ids remembered per project (new issue detection). */
-  SEEN_IDS: 60,
+  SEEN_IDS: 200,
   /** New issue events per project and per round; the rest is only logged. */
   EVENTS_PER_PROJECT: 5,
   /** Scene events per round, every project together. */

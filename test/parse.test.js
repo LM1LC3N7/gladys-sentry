@@ -115,12 +115,12 @@ test('issues: fields read strictly; a missing date is null, never now', () => {
 });
 
 test('stats: hourly series summed; empty groups is zero; any other shape refused', () => {
-  const counts = Array.from({ length: 24 }, (_, i) => i);
+  const counts = Array.from({ length: 25 }, (_, i) => i);
   const parsed = parseStats(statsAnswer(counts, NOW));
   assert.deepEqual(parsed.counts, counts);
   assert.equal(parsed.lastStart, Date.parse('2026-11-25T12:00:00Z'));
-  assert.equal(parsed.end, NOW);
-  assert.deepEqual(parseStats(statsAnswer(Array(24).fill(0), NOW)).counts, Array(24).fill(0));
+  assert.equal(parsed.end, Date.parse('2026-11-25T13:00:00Z'), 'Sentry rounds end up');
+  assert.deepEqual(parseStats(statsAnswer(Array(25).fill(0), NOW)).counts, Array(25).fill(0));
   const bad = (mutate) => {
     const answer = statsAnswer(counts, NOW);
     mutate(answer);
@@ -159,7 +159,7 @@ test('stats: hourly series summed; empty groups is zero; any other shape refused
   const other = statsAnswer(counts, NOW);
   other.groups.push({
     by: { outcome: 'filtered' },
-    series: { 'sum(quantity)': Array(24).fill(1000) },
+    series: { 'sum(quantity)': Array(25).fill(1000) },
   });
   assert.deepEqual(parseStats(other).counts, counts);
 });

@@ -10,7 +10,7 @@
 // configuration only (sentry.io, de.sentry.io or the self-hosted URL). One
 // request in flight at a time (Sentry limits concurrent requests too). The
 // rate limit headers of each answer are read: when Sentry says no request is
-// left in its window, the next one waits for the reset (10 s at most, else
+// left in the window of a route, the next request of that route waits for the reset (10 s at most, else
 // the rest of the round is skipped).
 // -----------------------------------------------------------------------------
 
@@ -24,8 +24,12 @@ import {
   rateLimit,
   retryAfterMs,
   serverDate,
+  maxTotalHits,
   totalHits,
 } from './parse.js';
+
+/** The cap of X-Hits when Sentry does not say it (MAX_HITS_LIMIT of Sentry). */
+const HITS_CAP = 1000;
 
 export class SentryClient {
   /**
@@ -53,9 +57,8 @@ export class SentryClient {
     this.timers = timers;
     this.closed = false;
     this.chain = Promise.resolve();
-    /** Sentry's window: no request left until this monotonic time (null: unknown or not spent). */
-    this.windowUntil = null;
-    this.windowSpent = false;
+    /** route -> monotonic time until which Sentry's window of that route is spent (limits are per route). */
+    this.windows = new Map();
     this.waits = new Set();
     this.abort = new AbortController();
     this.sent = 0;
@@ -96,8 +99,8 @@ export class SentryClient {
 
   async #send(url, route, maxBytes) {
     if (this.closed) throw new SentryError(CODES.CLOSED, 'Client closed', { route });
-    if (this.windowSpent) {
-      const wait = this.windowUntil - this.monotonic();
+    if (this.windows.has(route)) {
+      const wait = this.windows.get(route) - this.monotonic();
       if (wait > TIMINGS.WINDOW_WAIT_MAX_MS) {
         throw new SentryError(CODES.LIMITED, 'Sentry rate limit window spent: not sent', {
           route,
@@ -106,8 +109,7 @@ export class SentryClient {
       }
       if (wait > 0) await this.#sleep(wait);
       if (this.closed) throw new SentryError(CODES.CLOSED, 'Client closed', { route });
-      this.windowSpent = false;
-      this.windowUntil = null;
+      this.windows.delete(route);
     }
     this.sent += 1;
     const response = await this.request(url, {
@@ -119,9 +121,8 @@ export class SentryClient {
     if (this.closed) throw new SentryError(CODES.CLOSED, 'Client closed', { route });
     const { remaining, resetInMs } = rateLimit(response.headers);
     if (remaining === 0) {
-      this.windowSpent = true;
       // The reset unknown: Sentry's windows are short, the next request waits the longest wait.
-      this.windowUntil = this.monotonic() + (resetInMs ?? TIMINGS.WINDOW_WAIT_MAX_MS);
+      this.windows.set(route, this.monotonic() + (resetInMs ?? TIMINGS.WINDOW_WAIT_MAX_MS));
     }
     const { status } = response;
     if (status >= 300 && status <= 399) {
@@ -197,9 +198,12 @@ export class SentryClient {
     if (!issues)
       throw new SentryError(CODES.BAD_ANSWER, 'Not a list of issues', { route: 'issues' });
     const hits = totalHits(headers);
+    // X-Hits is an estimate, capped at X-Max-Hits (1000 on sentry.io): at the
+    // cap the total is unknown, never published as exact.
+    const maxHits = maxTotalHits(headers);
     const raw = Array.isArray(json) ? json.length : 0;
     let total = null;
-    if (hits !== null && hits >= raw) total = hits;
+    if (hits !== null && hits >= raw && hits < (maxHits ?? HITS_CAP)) total = hits;
     else if (raw < LIMITS.ISSUES && !nextCursor(headers)) total = raw;
     return { issues: issues.slice(0, LIMITS.ISSUES), total, serverNow: serverDate(headers) };
   }

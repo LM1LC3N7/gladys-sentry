@@ -68,6 +68,8 @@ export function rateLimit(headers) {
 export function retryAfterMs(headers) {
   const retry = header(headers, 'retry-after');
   if (retry !== null) {
+    // A huge value is capped (the pause has a ceiling anyway), never ignored.
+    if (/^\d{10,30}$/.test(retry)) return 1e12;
     const seconds = digits(retry, 9);
     if (seconds !== null) return seconds * 1000;
     const at = Date.parse(retry);
@@ -98,6 +100,11 @@ export function nextCursor(headers) {
 /** The `X-Hits` header (the total of a search, when Sentry gives it) or null. */
 export function totalHits(headers) {
   return digits(header(headers, 'x-hits'), 9);
+}
+
+/** The `X-Max-Hits` header (the cap of X-Hits) or null. */
+export function maxTotalHits(headers) {
+  return digits(header(headers, 'x-max-hits'), 9);
 }
 
 /** A page of the project list -> [{ id, slug, name, platform }] or null when not a list. */

@@ -18,8 +18,8 @@
       "type": "section",
       "label": { "en": "How it works", "fr": "Fonctionnement" },
       "description": {
-        "en": "Gladys reads your Sentry organization (sentry.io in the US or the EU, or a self-hosted Sentry) through the official Sentry API, with an auth token, read only. Each project becomes a Gladys device (Discovery tab): unresolved issues, errors of the last hour and of the last 24 hours, title of the newest issue. Two scene triggers: \"New Sentry issue\" and \"Sentry error spike\". Create a personal token in Sentry, User settings, Personal Tokens, with the read scopes org:read, project:read and event:read only. Unofficial integration, not affiliated with Sentry.",
-        "fr": "Gladys lit votre organisation Sentry (sentry.io aux États-Unis ou dans l'UE, ou un Sentry auto-hébergé) par l'API officielle de Sentry, avec un jeton d'authentification, en lecture seule. Chaque projet devient un appareil Gladys (onglet Découverte) : problèmes non résolus, erreurs de la dernière heure et des dernières 24 heures, titre du problème le plus récent. Deux déclencheurs de scène : « Nouveau problème Sentry » et « Pic d'erreurs Sentry ». Créez un jeton personnel dans Sentry, User settings, Personal Tokens, avec seulement les droits de lecture org:read, project:read et event:read. Intégration non officielle, sans lien avec Sentry."
+        "en": "Gladys reads your Sentry organization (sentry.io in the US or the EU, or a self-hosted Sentry) through the official Sentry API, with an auth token, read only. Each project becomes a Gladys device (Discovery tab): unresolved issues, errors of the last hour and of the last 24 hours, title of the newest issue. Two scene triggers: \"New Sentry issue\" and \"Sentry error spike\". Create a personal token in Sentry, User settings, Personal Tokens, with the read scopes org:read and event:read only. Unofficial integration, not affiliated with Sentry.",
+        "fr": "Gladys lit votre organisation Sentry (sentry.io aux États-Unis ou dans l'UE, ou un Sentry auto-hébergé) par l'API officielle de Sentry, avec un jeton d'authentification, en lecture seule. Chaque projet devient un appareil Gladys (onglet Découverte) : problèmes non résolus, erreurs de la dernière heure et des dernières 24 heures, titre du problème le plus récent. Deux déclencheurs de scène : « Nouveau problème Sentry » et « Pic d'erreurs Sentry ». Créez un jeton personnel dans Sentry, User settings, Personal Tokens, avec seulement les droits de lecture org:read et event:read. Intégration non officielle, sans lien avec Sentry."
       },
       "links": [
         {
@@ -37,8 +37,8 @@
       "type": "secret",
       "label": { "en": "Auth token", "fr": "Jeton d'authentification" },
       "description": {
-        "en": "A personal token with the read scopes org:read, project:read and event:read (no write scope is needed). Kept by Gladys in its database, never shown again, sent only to the Sentry of the region below, in the Authorization header.",
-        "fr": "Un jeton personnel avec les droits de lecture org:read, project:read et event:read (aucun droit d'écriture n'est utile). Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement au Sentry de la région ci-dessous, dans l'en-tête Authorization."
+        "en": "A personal token with the read scopes org:read and event:read (no write scope is needed). Kept by Gladys in its database, never shown again, sent only to the Sentry of the region below, in the Authorization header.",
+        "fr": "Un jeton personnel avec les droits de lecture org:read et event:read (aucun droit d'écriture n'est utile). Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement au Sentry de la région ci-dessous, dans l'en-tête Authorization."
       },
       "placeholder": { "en": "sntryu_...", "fr": "sntryu_..." },
       "required": true
@@ -127,8 +127,8 @@
       "type": "number",
       "label": { "en": "Error spike threshold", "fr": "Seuil du pic d'erreurs" },
       "description": {
-        "en": "\"Sentry error spike\" fires when a project counts at least this many errors in the last hour, and at least three times its usual hour (the mean of the day before). Whole number, 10 to 1000000.",
-        "fr": "« Pic d'erreurs Sentry » se déclenche quand un projet compte au moins ce nombre d'erreurs dans la dernière heure, et au moins trois fois son heure habituelle (la moyenne de la veille). Nombre entier, de 10 à 1000000."
+        "en": "\"Sentry error spike\" fires when a project counts at least this many errors in the last hour, and at least three times its usual hour (the mean of the complete hours before the last two). Whole number, 10 to 1000000.",
+        "fr": "« Pic d'erreurs Sentry » se déclenche quand un projet compte au moins ce nombre d'erreurs dans la dernière heure, et au moins trois fois son heure habituelle (la moyenne des heures complètes avant les deux dernières). Nombre entier, de 10 à 1000000."
       },
       "required": false,
       "default": 100,

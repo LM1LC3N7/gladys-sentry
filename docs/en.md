@@ -13,8 +13,7 @@ documentation and tested against a simulated Sentry. Reports are welcome.
 
 - A Sentry organization, on sentry.io or self-hosted.
 - A **personal token**: in Sentry, _User settings_, _Personal Tokens_, _Create
-  New Token_, with the read scopes **org:read**, **project:read** and
-  **event:read** only (no write scope is needed). An organization token
+  New Token_, with the read scopes **org:read** and **event:read** only (no write scope is needed). An organization token
   (`sntrys_…`) is limited to releases and cannot read issues.
 
 ## Configuration
@@ -48,26 +47,23 @@ minute) and says how many projects the token can see.
 Each followed project appears in the _Discovery_ tab; add the ones you want.
 Features (read only):
 
-- **Unresolved issues**: the unresolved issues seen in the last 90 days. When
-  Sentry does not give the total and there are more than 25, the value is not
-  published (an unknown count is never shown as a number).
+- **Unresolved issues**: the unresolved issues seen in the last 90 days, as Sentry estimates them (its `X-Hits` total). At its cap (1,000 on sentry.io), or when Sentry gives no total and there are more than 100, the value is not published: a count only known as "at least" is never shown as exact.
 - **Errors in the last hour**: the accepted errors of the current hour, plus
   the share of the previous hour still inside the last 60 minutes.
-- **Errors in the last 24 h**.
+- **Errors in the last 24 h**: the last 24 hourly buckets of Sentry, the oldest by its share still inside the last 24 hours.
 - **Newest issue**: the title of the most recent unresolved issue (`-` when
   there is none).
 
 ## Scene triggers
 
 - **New Sentry issue**: a new unresolved issue, first seen less than 2 hours
-  ago by Sentry's clock. Filters: the project, the levels. Variables: project
+  ago by Sentry's clock (Sentry dates an issue by its first event, as the application's clock gave it: an application clock more than an hour late may hide a new issue). Each reading looks at the 100 newest unresolved issues and remembers 200 ids per project. Filters: the project, the levels. Variables: project
   name, issue title, short id, level, link. Never at the first reading of a
   project (the issues already there are not "new"); the reference is kept, so a
   restart neither repeats an issue nor loses one first seen less than 2 hours before. Five issues per project and per
   reading at most (a burst only starts five scenes).
 - **Sentry error spike**: a project counts, in the last hour, at least the
-  threshold **and** three times its usual hour (the mean of the complete
-  hours of the day before). Once per spike: it fires again only after the errors went
+  threshold **and** three times its usual hour (the mean of the complete hours before the last two, 22 at most). Once per spike: it fires again only after the errors went
   under half the threshold. Not at the first reading, nor after a long gap
   without readings (2 intervals). Variables: project name, errors in the last
   hour, usual errors per hour, threshold.
@@ -85,11 +81,9 @@ follow many projects.
 - Sentry's rate limit headers are read: when no request is left in Sentry's
   window, the next one waits for the reset (10 s at most, else the rest of the
   round waits for the next round, starting where it stopped).
-- **HTTP 429** or **5xx**: every request waits (the `Retry-After` of Sentry,
-  else 1 minute doubling while it lasts, 6 hours at most). The pause is kept
+- **HTTP 429**: every request waits until the reset Sentry gives (`X-Sentry-Rate-Limit-Reset`, or a `Retry-After` if one comes), else 1 minute doubling while it lasts; 1 minute at least, 6 hours at most. **HTTP 5xx**: the project concerned is spaced out like any failure; when two projects or the project list fail in the same round, every request waits the same way. The pause is kept
   across a restart; the test button does not send during it.
-- A failing reading of one project (HTTP 403, 404, an unexpected answer) is
-  spaced out, doubling up to an hour; the other projects go on.
+- A failing reading of one project (HTTP 5xx, 403, 404, an unexpected answer) is tried again at the next round, then every 2, 4, 8... rounds (an hour at most); the other projects go on, and the next round starts after a project that caused a pause.
 - Answers are bounded in size (2 MB for the project list) and in time (15 s);
   redirects are never followed (the token would go along).
 - A restart (or Gladys reconnecting) never reads sooner than the interval: the
@@ -102,8 +96,7 @@ follow many projects.
   or a press of _Test the connection_ succeeds. A 401 on the issues or the
   counts of one project is not taken as a refusal: the project list is asked
   again at the next round, and only its answer decides.
-- **HTTP 403** on the project list: the token lacks a scope (org:read,
-  project:read, event:read).
+- **HTTP 403** on the project list: the token lacks a scope (org:read, event:read).
 - **HTTP 404**: wrong organization slug, or the wrong region (US / EU).
 - **Redirect not followed**: often the wrong region, or an http URL that
   redirects to https.

@@ -31,7 +31,7 @@ test('rounds every 5 min (real clock x500), measured; a stop leaves no timer nor
       res.end('{}');
     } else if (req.url.includes('/projects/')) res.end(JSON.stringify([project(1, 'web')]));
     else if (req.url.includes('/issues/')) res.end('[]');
-    else res.end(JSON.stringify(statsAnswer(Array(24).fill(1), Date.now())));
+    else res.end(JSON.stringify(statsAnswer(Array(25).fill(1), Date.now())));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => {

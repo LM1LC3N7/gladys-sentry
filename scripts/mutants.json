@@ -110,7 +110,7 @@
   {
     "name": "rotation forgotten",
     "file": "src/app.js",
-    "from": "this.rotation = index;",
+    "from": "this.rotation = outcome.paused ? index + 1 : index;",
     "to": "this.rotation = 0;"
   },
   {
@@ -194,8 +194,8 @@
   {
     "name": "last hour counts the whole previous hour",
     "file": "src/triggers.js",
-    "from": "previous * (1 - elapsed)",
-    "to": "previous"
+    "from": "counts.at(-hours - 1) * (1 - elapsed)",
+    "to": "counts.at(-hours - 1)"
   },
   {
     "name": "unknown count published",
@@ -232,5 +232,89 @@
     "file": "src/sentry/client.js",
     "from": "    this.abort.abort();\n",
     "to": "\n"
+  },
+  {
+    "name": "stats end taken for the time of the reading",
+    "file": "src/app.js",
+    "from": "errorCounts(result, result.serverNow)",
+    "to": "errorCounts(result, result.end ?? result.serverNow)"
+  },
+  {
+    "name": "X-Hits at its cap published",
+    "file": "src/sentry/client.js",
+    "from": "hits < (maxHits ?? HITS_CAP)",
+    "to": "true"
+  },
+  {
+    "name": "rotation kept on the project that caused a pause",
+    "file": "src/app.js",
+    "from": "outcome.paused ? index + 1 : index",
+    "to": "index"
+  },
+  {
+    "name": "one project in 5xx pauses everything",
+    "file": "src/app.js",
+    "from": "failing >= 2",
+    "to": "failing >= 1"
+  },
+  {
+    "name": "references of unfollowed projects kept",
+    "file": "src/app.js",
+    "from": "Object.keys(refs).some((id) => !ids.has(id))",
+    "to": "false"
+  },
+  {
+    "name": "last 24 h without the share of the 25th hour",
+    "file": "src/triggers.js",
+    "from": "counts.length > hours ?",
+    "to": "false ?"
+  },
+  {
+    "name": "only the 25 newest issues read",
+    "file": "src/constants.js",
+    "from": "ISSUES: 100,",
+    "to": "ISSUES: 25,"
+  },
+  {
+    "name": "403 or redirect of the project list taken as a refusal",
+    "file": "src/app.js",
+    "from": "    if (err?.code === CODES.HTTP && err.status === 401) {\n      await this.refuse(generation);",
+    "to": "    if ([CODES.HTTP, CODES.REDIRECT].includes(err?.code)) {\n      await this.refuse(generation);"
+  },
+  {
+    "name": "pause without its floor",
+    "file": "src/app.js",
+    "from": "        TIMINGS.PAUSE_MIN_MS,\n",
+    "to": "        0,\n"
+  },
+  {
+    "name": "pause without its ceiling",
+    "file": "src/app.js",
+    "from": "      TIMINGS.PAUSE_MAX_MS,\n      Math.max(",
+    "to": "      Infinity,\n      Math.max("
+  },
+  {
+    "name": "certificate not checked",
+    "file": "src/sentry/http.js",
+    "from": "rejectUnauthorized: true",
+    "to": "rejectUnauthorized: false"
+  },
+  {
+    "name": "accepted outcome not asked",
+    "file": "src/sentry/client.js",
+    "from": "      outcome: 'accepted',\n",
+    "to": ""
+  },
+  {
+    "name": "huge Retry-After ignored",
+    "file": "src/sentry/parse.js",
+    "from": "if (/^\\d{10,30}$/.test(retry)) return 1e12;",
+    "to": ""
+  },
+  {
+    "name": "scope not checked when /data becomes readable",
+    "file": "src/app.js",
+    "from": "      if (this.store.readable) {\n        await this.ensureScope();",
+    "to": "      if (this.store.readable) {"
   }
 ]

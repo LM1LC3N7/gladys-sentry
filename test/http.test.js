@@ -7,6 +7,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import https from 'node:https';
+import { readFileSync } from 'node:fs';
 import net from 'node:net';
 import { CODES, httpGet } from '../src/sentry/http.js';
 import { SentryClient } from '../src/sentry/client.js';
@@ -140,4 +142,31 @@ test('a closed client cuts the request in flight', async (t) => {
   assert.ok(performance.now() - started < 1000);
   await assert.rejects(client.issues('1'), (err) => err.code === CODES.CLOSED);
   assert.equal(srv.requests.length, 1);
+});
+
+test('https with a certificate no authority signed: refused before any request (token never sent)', async (t) => {
+  const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
+  const requests = [];
+  const server = https.createServer(
+    { key: fixture('selfsigned.key'), cert: fixture('selfsigned.crt') },
+    (req, res) => {
+      requests.push(req.headers);
+      res.end('[]');
+    },
+  );
+  server.on('tlsClientError', () => {});
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    server.closeAllConnections();
+    return new Promise((resolve) => server.close(() => resolve()));
+  });
+  await assert.rejects(
+    httpGet(`https://127.0.0.1:${server.address().port}/api/0/`, {
+      token: TOKEN,
+      timeout: 2000,
+      maxBytes: 100,
+    }),
+    (err) => err.code === CODES.UNREACHABLE,
+  );
+  assert.equal(requests.length, 0);
 });

@@ -49,9 +49,15 @@ export function issue(
   };
 }
 
-/** The stats_v2 answer for 24 hourly counts (oldest first) ending at `end`. */
-export function statsAnswer(counts, end) {
-  const lastStart = Math.floor(end / HOUR) * HOUR;
+/**
+ * The stats_v2 answer as Sentry builds it (`to_intervals` of
+ * snuba/sessions_v2.py) for `statsPeriod=24h&interval=1h` asked at `now`: 25
+ * hourly intervals, the last one the current hour (partial), and `end`
+ * rounded UP to the next hour, never the time of the request.
+ */
+export function statsAnswer(counts, now) {
+  const lastStart = Math.floor(now / HOUR) * HOUR;
+  const end = lastStart + HOUR;
   const intervals = counts.map((_, i) =>
     new Date(lastStart - (counts.length - 1 - i) * HOUR).toISOString().replace('.000', ''),
   );
@@ -86,11 +92,14 @@ export function createFakeSentry({
       ['1', [issue(11, { firstSeen: NOW - 5 * HOUR }), issue(10, { firstSeen: NOW - 30 * HOUR })]],
       ['2', []],
     ]),
-    /** project id -> 24 hourly counts */
+    /** project id -> 25 hourly counts, the last one the current hour */
     counts: new Map([
-      ['1', Array.from({ length: 24 }, () => 4)],
-      ['2', Array.from({ length: 24 }, () => 0)],
+      ['1', Array.from({ length: 25 }, () => 4)],
+      ['2', Array.from({ length: 25 }, () => 0)],
     ]),
+    /** project id -> errors per hour, a number or (hour start ms) => number (instead of `counts`) */
+    perHour: new Map(),
+    maxHits: 1000,
     hits: true,
     fail: {},
     headers: {},
@@ -165,12 +174,40 @@ export function createFakeSentry({
       const headers = {
         link: `<${origin}>; rel="next"; results="${list.length > limit}"; cursor="0:${limit}:0"`,
       };
-      if (sentry.hits) headers['x-hits'] = String(list.length);
+      // As Sentry: an estimate capped at X-Max-Hits (MAX_HITS_LIMIT, api/paginator.py).
+      if (sentry.hits) {
+        headers['x-hits'] = String(Math.min(list.length, sentry.maxHits));
+        headers['x-max-hits'] = String(sentry.maxHits);
+      }
       return answer(200, page, headers);
     }
     if (name === 'stats') {
-      const counts = sentry.counts.get(q.get('project')) ?? Array.from({ length: 24 }, () => 0);
-      return answer(200, statsAnswer(counts, clock.now()));
+      // The query of the integration, as documented: anything else is a 400.
+      const wanted = {
+        field: 'sum(quantity)',
+        groupBy: 'outcome',
+        category: 'error',
+        outcome: 'accepted',
+        interval: '1h',
+        statsPeriod: '24h',
+      };
+      for (const [key, value] of Object.entries(wanted)) {
+        if (q.get(key) !== value) return answer(400, { detail: `Invalid ${key}` });
+      }
+      const id = q.get('project');
+      const rate = sentry.perHour.get(id);
+      const now = clock.now();
+      let counts = sentry.counts.get(id) ?? Array.from({ length: 25 }, () => 0);
+      if (rate !== undefined) {
+        // A constant rate: complete hours full, the current one by its elapsed share.
+        const lastStart = Math.floor(now / HOUR) * HOUR;
+        const at = (start) => (typeof rate === 'function' ? rate(start) : rate);
+        counts = Array.from({ length: 25 }, (_, i) => {
+          const start = lastStart - (24 - i) * HOUR;
+          return i < 24 ? at(start) : Math.floor((at(start) * (now - lastStart)) / HOUR);
+        });
+      }
+      return answer(200, statsAnswer(counts, now));
     }
     return answer(404, { detail: 'Not found' });
   };

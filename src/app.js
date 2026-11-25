@@ -224,15 +224,23 @@ export class SentryApp {
   }
 
   /** What /data says: refusal, pause, the next round, the references. */
-  async restore(force, generation) {
+  /**
+   * The references in /data belong to one Sentry and organization: those of
+   * another mean nothing and are dropped (at start, and when /data becomes
+   * readable later).
+   */
+  async ensureScope() {
     const scope = `${this.config.base}\n${this.config.organization}`;
     if (this.store.readable && this.store.get('scope') !== scope) {
-      // Another organization or Sentry: the references of the old one mean nothing.
       await this.within(this.store.update({ scope, refs: {} }), TIMINGS.DATA_READ_MS).catch(
         () => {},
       );
-      if (generation !== this.generation) return;
     }
+  }
+
+  async restore(force, generation) {
+    await this.ensureScope();
+    if (generation !== this.generation) return;
     const refused = this.store.get('refused');
     if (refused && !force && this.mark(refused.salt) === refused.mark) {
       this.refused = true;
@@ -265,8 +273,11 @@ export class SentryApp {
       if (generation !== this.generation) return;
       await this.store.load();
       if (generation !== this.generation) return;
-      if (this.store.readable) await this.updateStatus();
-      else this.scheduleStoreRetry(generation);
+      if (this.store.readable) {
+        await this.ensureScope();
+        if (generation !== this.generation) return;
+        await this.updateStatus();
+      } else this.scheduleStoreRetry(generation);
     });
   }
 
@@ -355,6 +366,7 @@ export class SentryApp {
     if (followed.length === 0) return;
     const start = this.rotation % followed.length;
     let events = 0;
+    let failing = 0;
     for (let i = 0; i < followed.length; i += 1) {
       const index = (start + i) % followed.length;
       const outcome = await this.readProject(
@@ -363,14 +375,25 @@ export class SentryApp {
         LIMITS.EVENTS_PER_ROUND - events,
       );
       if (generation !== this.generation) return;
-      if (outcome.stop) {
-        // Paused or Sentry's window spent: this project first at the next round.
-        this.rotation = index;
+      events += outcome.events;
+      if (outcome.serverError) failing += 1;
+      if (outcome.serverError && failing >= 2 && !outcome.stop) {
+        // Several projects in 5xx: Sentry itself is failing, every request waits.
+        await this.pause(outcome.serverError, generation);
+        if (generation !== this.generation) return;
+        this.rotation = index + 1;
         return;
       }
-      events += outcome.events;
+      if (outcome.stop) {
+        // Sentry's window spent: this project first at the next round. A pause
+        // this project caused (429): the next one first, so that a project
+        // that keeps failing never starves the others.
+        this.rotation = outcome.paused ? index + 1 : index;
+        return;
+      }
     }
     this.rotation = 0;
+    this.pauses = 0;
   }
 
   /** The project list. Resolves 'ok', 'failed' or 'stop' (refused or paused). */
@@ -444,6 +467,13 @@ export class SentryApp {
     this.pauses = 0;
     const ids = new Set(followed.map((p) => p.id));
     for (const id of this.readings.keys()) if (!ids.has(id)) this.readings.delete(id);
+    const refs = this.store.get('refs') ?? {};
+    if (Object.keys(refs).some((id) => !ids.has(id))) {
+      // The references of the projects no longer followed are dropped.
+      const kept = Object.fromEntries(Object.entries(refs).filter(([id]) => ids.has(id)));
+      await this.within(this.store.update({ refs: kept }), TIMINGS.DATA_READ_MS).catch(() => {});
+      if (generation !== this.generation) return;
+    }
     if (wasRefused) {
       await this.within(this.store.update({ refused: null }), TIMINGS.DATA_READ_MS).catch(() => {});
       if (generation !== this.generation) return;
@@ -493,18 +523,26 @@ export class SentryApp {
     return !entry || mono >= entry.nextAt;
   }
 
+  /**
+   * A failing reading: tried again at the next round, then every 2, 4, 8...
+   * rounds (an hour at most).
+   */
   failed(key) {
     const entry = this.backoff.get(key) ?? { failures: 0, nextAt: 0 };
     entry.failures += 1;
+    const base = this.dueAt ?? this.monotonic();
     entry.nextAt =
-      this.monotonic() +
-      Math.min(TIMINGS.RETRY_MAX_MS, this.config.intervalMs * 2 ** Math.min(10, entry.failures));
+      base +
+      Math.min(
+        TIMINGS.RETRY_MAX_MS,
+        this.config.intervalMs * (2 ** Math.min(10, entry.failures - 1) - 1),
+      );
     this.backoff.set(key, entry);
   }
 
   /**
    * The issues and the counts of one project, published; scene events fired.
-   * Resolves { stop, events }.
+   * Resolves { stop, paused, events, serverError }.
    */
   async readProject(project, generation, eventRoom) {
     const reading = this.readings.get(project.id) ?? {
@@ -516,6 +554,7 @@ export class SentryApp {
     };
     this.readings.set(project.id, reading);
     let events = 0;
+    let serverError = null;
     for (const route of ['issues', 'stats']) {
       const key = `${project.id}:${route}`;
       const at = this.monotonic();
@@ -530,10 +569,12 @@ export class SentryApp {
         if (generation !== this.generation) return { stop: true, events };
         if (err?.code === CODES.CLOSED || err?.code === CODES.LIMITED)
           return { stop: true, events };
-        if (isPausing(err)) {
+        if (err?.code === CODES.HTTP && err.status === 429) {
+          // Sentry's limit is per caller and route: every request waits.
           await this.pause(err, generation);
-          return { stop: true, events };
+          return { stop: true, paused: true, events };
         }
+        if (isPausing(err)) serverError = err; // 5xx: this project only, unless several fail
         if (err?.code === CODES.HTTP && [401, 403, 404].includes(err.status)) {
           // Not a refusal: the project list (the primary route) says, next round.
           this.projectsWanted = true;
@@ -547,14 +588,15 @@ export class SentryApp {
       }
       if (generation !== this.generation) return { stop: true, events };
       this.backoff.delete(key);
-      this.pauses = 0;
       reading.errors[route] = null;
       if (route === 'issues') {
         reading.issues = result;
         reading.issuesAt = at;
         events += await this.newIssues(project, result, generation, eventRoom - events);
       } else {
-        const counts = errorCounts(result, result.end ?? result.serverNow);
+        // The end of the reading is Sentry's clock (`Date`), never `end`: Sentry
+        // rounds it up to the next hour.
+        const counts = errorCounts(result, result.serverNow);
         const previous = this.spikes.get(project.id);
         reading.counts = counts;
         reading.countsAt = at;
@@ -572,7 +614,7 @@ export class SentryApp {
       }
       if (generation !== this.generation) return { stop: true, events };
     }
-    return { stop: false, events };
+    return { stop: false, events, serverError };
   }
 
   async newIssues(project, result, generation, room) {

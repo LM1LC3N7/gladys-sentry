@@ -14,8 +14,7 @@ l'API Sentry et testée contre un Sentry simulé. Les retours sont bienvenus.
 
 - Une organisation Sentry, sur sentry.io ou auto-hébergée.
 - Un **jeton personnel** : dans Sentry, _User settings_, _Personal Tokens_,
-  _Create New Token_, avec seulement les droits de lecture **org:read**,
-  **project:read** et **event:read** (aucun droit d'écriture n'est utile). Un
+  _Create New Token_, avec seulement les droits de lecture **org:read** et **event:read** (aucun droit d'écriture n'est utile). Un
   jeton d'organisation (`sntrys_…`) est limité aux versions et ne peut pas lire
   les problèmes.
 
@@ -53,28 +52,26 @@ Chaque projet suivi apparaît dans l'onglet _Découverte_ ; ajoutez ceux que vou
 voulez. Fonctionnalités (lecture seule) :
 
 - **Problèmes non résolus** : les problèmes non résolus vus dans les 90
-  derniers jours. Quand Sentry ne donne pas le total et qu'il y en a plus de 25,
-  la valeur n'est pas publiée (un nombre inconnu n'est jamais affiché comme un
-  chiffre).
+  derniers jours, selon l'estimation de Sentry (son total `X-Hits`). À son plafond (1 000 sur sentry.io), ou quand Sentry ne donne pas de total et qu'il y en a plus de 100,
+  la valeur n'est pas publiée : un nombre connu seulement comme « au moins » n'est jamais affiché comme exact.
 - **Erreurs de la dernière heure** : les erreurs acceptées de l'heure en
   cours, plus la part de l'heure précédente encore dans les 60 dernières
   minutes.
-- **Erreurs des dernières 24 h**.
+- **Erreurs des dernières 24 h** : les 24 derniers seaux horaires de Sentry, le plus ancien pour sa part encore dans les dernières 24 heures.
 - **Problème le plus récent** : le titre du dernier problème non résolu (`-`
   quand il n'y en a aucun).
 
 ## Déclencheurs de scène
 
 - **Nouveau problème Sentry** : un nouveau problème non résolu, vu pour la
-  première fois il y a moins de 2 heures selon l'horloge de Sentry. Filtres :
+  première fois il y a moins de 2 heures selon l'horloge de Sentry (Sentry date un problème par son premier événement, à l'heure donnée par l'application : une application dont l'horloge retarde de plus d'une heure peut masquer un nouveau problème). Chaque lecture regarde les 100 problèmes non résolus les plus récents et retient 200 identifiants par projet. Filtres :
   le projet, les niveaux. Variables : nom du projet, titre, identifiant court,
   niveau, lien du problème. Jamais à la première lecture d'un projet (les
   problèmes déjà là ne sont pas « nouveaux ») ; la référence est gardée, donc un
   redémarrage ne répète aucun problème et ne perd pas ceux apparus moins de 2 heures avant. Cinq problèmes par projet et
   par lecture au plus (une rafale ne lance que cinq scènes).
 - **Pic d'erreurs Sentry** : un projet compte, dans la dernière heure, au moins
-  le seuil **et** trois fois son heure habituelle (la moyenne des heures
-  complètes de la veille). Une fois par pic : il ne se déclenche de nouveau qu'après
+  le seuil **et** trois fois son heure habituelle (la moyenne des heures complètes avant les deux dernières, 22 au plus). Une fois par pic : il ne se déclenche de nouveau qu'après
   que les erreurs sont repassées sous la moitié du seuil. Pas à la première
   lecture, ni après un long trou sans lecture (2 intervalles). Variables : nom
   du projet, erreurs de la dernière heure, erreurs habituelles par heure,
@@ -94,12 +91,10 @@ fréquentes : gardez un intervalle long si vous suivez beaucoup de projets.
   requête ne reste dans la fenêtre de Sentry, la suivante attend la remise à
   zéro (10 s au plus, sinon le reste du tour attend le tour suivant, qui
   reprend là où il s'est arrêté).
-- **HTTP 429** ou **5xx** : toutes les requêtes attendent (le `Retry-After` de
-  Sentry, sinon 1 minute, doublée tant que cela dure, 6 heures au plus). La
+- **HTTP 429** : toutes les requêtes attendent la remise à zéro donnée par Sentry (`X-Sentry-Rate-Limit-Reset`, ou un `Retry-After` s'il en vient un), sinon 1 minute, doublée tant que cela dure ; 1 minute au moins, 6 heures au plus. **HTTP 5xx** : le projet concerné est espacé comme tout échec ; quand deux projets ou la liste des projets échouent dans le même tour, toutes les requêtes attendent de la même façon. La
   pause est gardée après un redémarrage ; le bouton de test n'envoie rien
   pendant ce temps.
-- Une lecture d'un projet qui échoue (HTTP 403, 404, réponse inattendue) est
-  espacée, en doublant jusqu'à une heure ; les autres projets continuent.
+- Une lecture d'un projet qui échoue (HTTP 5xx, 403, 404, réponse inattendue) est retentée au tour suivant, puis tous les 2, 4, 8… tours (une heure au plus) ; les autres projets continuent, et le tour suivant commence après un projet qui a causé une pause.
 - Les réponses sont bornées en taille (2 Mo pour la liste des projets) et en
   durée (15 s) ; les redirections ne sont jamais suivies (le jeton suivrait).
 - Un redémarrage (ou une reconnexion de Gladys) ne lit jamais plus tôt que
@@ -114,7 +109,7 @@ fréquentes : gardez un intervalle long si vous suivez beaucoup de projets.
   pris pour un refus : la liste des projets est redemandée au tour suivant, et
   seule sa réponse décide.
 - **HTTP 403** sur la liste des projets : il manque un droit au jeton
-  (org:read, project:read, event:read).
+  (org:read, event:read).
 - **HTTP 404** : mauvais slug d'organisation, ou mauvaise région (US / UE).
 - **Redirection non suivie** : souvent la mauvaise région, ou une URL http qui
   redirige vers https.
