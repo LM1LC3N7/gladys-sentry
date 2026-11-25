@@ -66,3 +66,7 @@ to date at the end of every milestone.
   state as a reference, never fires).
 - **Timers**: every timer goes through `schedule()`, which refuses a
   non-finite delay and caps at 2^31-1 ms (wave 1 lesson).
+
+## Next patch
+
+- Review minors: see `_lots/lot25/reviews/sentry-r2.md` (Retry-After d une 5xx avec un seul projet, 4 mutants survivants, 429 sans en-tête, rafale > 100 problèmes/h à documenter, statut event:read).
