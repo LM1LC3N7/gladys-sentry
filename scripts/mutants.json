@@ -1,0 +1,236 @@
+[
+  {
+    "name": "public http accepted",
+    "file": "src/config.js",
+    "from": "if (!lan) return { error: 'http' };",
+    "to": ""
+  },
+  {
+    "name": "credentials in the URL accepted",
+    "file": "src/config.js",
+    "from": "url.username || url.password || ",
+    "to": ""
+  },
+  {
+    "name": "token with a space or a new line sent",
+    "file": "src/config.js",
+    "from": "tokenInvalid: token !== '' && !TOKEN_PATTERN.test(token),",
+    "to": "tokenInvalid: false,"
+  },
+  {
+    "name": "redirect read as an answer",
+    "file": "src/sentry/client.js",
+    "from": "if (status >= 300 && status <= 399) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "announced length not checked",
+    "file": "src/sentry/http.js",
+    "from": "Number.isFinite(announced) && announced > maxBytes",
+    "to": "false"
+  },
+  {
+    "name": "streamed size not checked",
+    "file": "src/sentry/http.js",
+    "from": "if (size > maxBytes) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "rate limit window not waited for",
+    "file": "src/sentry/client.js",
+    "from": "if (wait > 0) await this.#sleep(wait);",
+    "to": ""
+  },
+  {
+    "name": "far rate limit reset waited for",
+    "file": "src/sentry/client.js",
+    "from": "if (wait > TIMINGS.WINDOW_WAIT_MAX_MS) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "401 of the project list not a refusal",
+    "file": "src/app.js",
+    "from": "    if (err?.code === CODES.HTTP && err.status === 401) {\n      await this.refuse(generation);",
+    "to": "    if (false) {\n      await this.refuse(generation);"
+  },
+  {
+    "name": "secondary 401 does not ask the list again",
+    "file": "src/app.js",
+    "from": "[401, 403, 404].includes(err.status)",
+    "to": "false"
+  },
+  {
+    "name": "refusal not restored after a restart",
+    "file": "src/app.js",
+    "from": "    if (refused && !force && this.mark(refused.salt) === refused.mark) {\n      this.refused = true;",
+    "to": "    if (refused && !force && this.mark(refused.salt) === refused.mark) {\n      void 0;"
+  },
+  {
+    "name": "saved configuration does not retry a refused token",
+    "file": "src/app.js",
+    "from": "refused && !force && this.mark",
+    "to": "refused && this.mark"
+  },
+  {
+    "name": "Retry-After ignored",
+    "file": "src/app.js",
+    "from": "asked ?? TIMINGS.PAUSE_MIN_MS",
+    "to": "null ?? TIMINGS.PAUSE_MIN_MS"
+  },
+  {
+    "name": "pause not kept in /data",
+    "file": "src/app.js",
+    "from": "this.store.update({ pausedUntil: Math.round(",
+    "to": "this.store.update({ pausedUntilX: Math.round("
+  },
+  {
+    "name": "pause not restored",
+    "file": "src/app.js",
+    "from": "if (left <= TIMINGS.PAUSE_MAX_MS) this.pauseUntil = mono + left;",
+    "to": ""
+  },
+  {
+    "name": "last round ignored at restart",
+    "file": "src/app.js",
+    "from": "if (last !== null && last <= wall)",
+    "to": "if (false)"
+  },
+  {
+    "name": "/data unreadable reads at once",
+    "file": "src/app.js",
+    "from": "delay = intervalMs; // the last attempt",
+    "to": "delay = 0; // the last attempt"
+  },
+  {
+    "name": "rounds twice as fast",
+    "file": "src/app.js",
+    "from": "this.dueAt = mono + this.config.intervalMs;",
+    "to": "this.dueAt = mono + this.config.intervalMs / 2;"
+  },
+  {
+    "name": "rotation forgotten",
+    "file": "src/app.js",
+    "from": "this.rotation = index;",
+    "to": "this.rotation = 0;"
+  },
+  {
+    "name": "failing secondary reading not spaced out",
+    "file": "src/app.js",
+    "from": "if (!this.allowed(key, at)) continue;",
+    "to": ""
+  },
+  {
+    "name": "infinite timer armed",
+    "file": "src/app.js",
+    "from": "if (!Number.isFinite(delay)) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "events per project unbounded",
+    "file": "src/app.js",
+    "from": "Math.min(LIMITS.EVENTS_PER_PROJECT, room)",
+    "to": "room"
+  },
+  {
+    "name": "spike gap ignored",
+    "file": "src/app.js",
+    "from": "at - previous.at <= gap",
+    "to": "true"
+  },
+  {
+    "name": "test button during a pause",
+    "file": "src/app.js",
+    "from": "      return T.status.paused(this.pauseUntil - mono);\n",
+    "to": "      void 0;\n"
+  },
+  {
+    "name": "test button not rate limited",
+    "file": "src/app.js",
+    "from": "mono - this.lastTestAt < TIMINGS.TEST_EVERY_MS",
+    "to": "false"
+  },
+  {
+    "name": "seen issue announced again",
+    "file": "src/triggers.js",
+    "from": "!seen.has(issue.id) &&",
+    "to": ""
+  },
+  {
+    "name": "old issue announced",
+    "file": "src/triggers.js",
+    "from": "issue.firstSeen > ref.since - LATE_ARRIVAL_MS &&",
+    "to": ""
+  },
+  {
+    "name": "no age limit",
+    "file": "src/triggers.js",
+    "from": "serverNow - issue.firstSeen <= NEW_ISSUE_MAX_AGE_MS",
+    "to": "true"
+  },
+  {
+    "name": "event at the first reading",
+    "file": "src/triggers.js",
+    "from": "    return {\n      fresh: [],",
+    "to": "    return {\n      fresh: issues,"
+  },
+  {
+    "name": "spike at the first reading",
+    "file": "src/triggers.js",
+    "from": "if (active === null) return { fire: false, active: spike };",
+    "to": "if (active === null) return { fire: spike, active: spike };"
+  },
+  {
+    "name": "spike re-armed without hysteresis",
+    "file": "src/triggers.js",
+    "from": "counts.lastHour >= threshold / 2",
+    "to": "counts.lastHour >= threshold"
+  },
+  {
+    "name": "spike without the usual hour",
+    "file": "src/triggers.js",
+    "from": "lastHour >= SPIKE_FACTOR * usual",
+    "to": "true"
+  },
+  {
+    "name": "last hour counts the whole previous hour",
+    "file": "src/triggers.js",
+    "from": "previous * (1 - elapsed)",
+    "to": "previous"
+  },
+  {
+    "name": "unknown count published",
+    "file": "src/sentry/client.js",
+    "from": "else if (raw < LIMITS.ISSUES && !nextCursor(headers)) total = raw;",
+    "to": "else total = raw;"
+  },
+  {
+    "name": "other outcomes counted",
+    "file": "src/sentry/parse.js",
+    "from": "if (outcome !== undefined && outcome !== 'accepted') continue;",
+    "to": ""
+  },
+  {
+    "name": "rate limit reset against our clock",
+    "file": "src/sentry/parse.js",
+    "from": "reset !== null && now !== null ? Math.max(0, reset * 1000 - now) : null",
+    "to": "reset !== null ? Math.max(0, reset * 1000 - (now ?? Date.now())) : null"
+  },
+  {
+    "name": "unreadable /data written over",
+    "file": "src/store.js",
+    "from": "    if (!this.readable) return false;\n",
+    "to": "\n"
+  },
+  {
+    "name": "refusal mark kept after a success",
+    "file": "src/app.js",
+    "from": "      await this.within(this.store.update({ refused: null }), TIMINGS.DATA_READ_MS).catch(() => {});",
+    "to": "      void 0;"
+  },
+  {
+    "name": "request in flight not cut at stop",
+    "file": "src/sentry/client.js",
+    "from": "    this.abort.abort();\n",
+    "to": "\n"
+  }
+]

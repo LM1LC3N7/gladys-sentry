@@ -1,67 +1,130 @@
-# Template de démonstration
+# Sentry
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Suivez les projets de votre organisation **Sentry** dans Gladys : problèmes
+non résolus, erreurs de la dernière heure et des dernières 24 heures, problème
+le plus récent, et lancez une scène sur un **nouveau problème** ou un **pic
+d'erreurs**. Fonctionne avec sentry.io (stockage aux États-Unis ou dans l'UE)
+et avec un Sentry auto-hébergé. En lecture seule : Gladys ne change jamais rien
+dans Sentry.
 
-## Ce que vous obtenez
+Intégration non officielle, sans lien avec Sentry. Elle n'a **jamais été testée avec un vrai Sentry** : elle est écrite d'après la documentation officielle de
+l'API Sentry et testée contre un Sentry simulé. Les retours sont bienvenus.
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+## Ce qu'il faut
+
+- Une organisation Sentry, sur sentry.io ou auto-hébergée.
+- Un **jeton personnel** : dans Sentry, _User settings_, _Personal Tokens_,
+  _Create New Token_, avec seulement les droits de lecture **org:read**,
+  **project:read** et **event:read** (aucun droit d'écriture n'est utile). Un
+  jeton d'organisation (`sntrys_…`) est limité aux versions et ne peut pas lire
+  les problèmes.
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+- **Jeton d'authentification** : gardé par Gladys dans sa base, jamais
+  réaffiché, envoyé seulement au Sentry choisi ci-dessous, dans l'en-tête
+  `Authorization`. Il n'apparaît ni dans les journaux, ni dans le statut, ni
+  dans les fichiers de l'intégration.
+- **Où est votre Sentry ?** : _sentry.io, États-Unis_ (`sentry.io`), _sentry.io,
+  Union européenne_ (`de.sentry.io` : voyez _Settings_, _General_, _Data
+  Storage Location_ de votre organisation), ou _Sentry auto-hébergé_.
+- **URL du Sentry auto-hébergé** (auto-hébergé seulement) :
+  `https://sentry.exemple.fr`, avec un chemin si Sentry est derrière un proxy
+  inverse (`https://exemple.fr/sentry`). Le certificat doit être accepté par un
+  navigateur (un certificat auto-signé n'est pas encore pris en charge). Le
+  `http://` simple n'est accepté que pour une adresse IP privée de votre réseau
+  (`http://192.168.1.5:9000`) : ailleurs, le jeton traverserait Internet en
+  clair.
+- **Slug de l'organisation** : le nom court dans vos adresses Sentry
+  (`https://<slug>.sentry.io` ou `/organizations/<slug>/`).
+- **Projets** (facultatif) : les slugs des projets à suivre, séparés par des
+  virgules, 20 au plus. Vide : les 20 premiers projets de l'organisation, dans
+  l'ordre des slugs (le statut dit combien sont laissés de côté).
+- **Rafraîchissement** : toutes les 5, 10 (par défaut), 15, 30 ou 60 minutes.
+- **Seuil du pic d'erreurs** : 100 erreurs dans la dernière heure par défaut
+  (de 10 à 1 000 000).
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+Appuyez sur **Tester la connexion** : le bouton lit une fois la liste des
+projets (au plus une fois par minute) et dit combien de projets le jeton voit.
 
-## Actions
+## Appareils
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Chaque projet suivi apparaît dans l'onglet _Découverte_ ; ajoutez ceux que vous
+voulez. Fonctionnalités (lecture seule) :
 
-## Scènes
+- **Problèmes non résolus** : les problèmes non résolus vus dans les 90
+  derniers jours. Quand Sentry ne donne pas le total et qu'il y en a plus de 25,
+  la valeur n'est pas publiée (un nombre inconnu n'est jamais affiché comme un
+  chiffre).
+- **Erreurs de la dernière heure** : les erreurs acceptées de l'heure en
+  cours, plus la part de l'heure précédente encore dans les 60 dernières
+  minutes.
+- **Erreurs des dernières 24 h**.
+- **Problème le plus récent** : le titre du dernier problème non résolu (`-`
+  quand il n'y en a aucun).
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## Déclencheurs de scène
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+- **Nouveau problème Sentry** : un nouveau problème non résolu, vu pour la
+  première fois il y a moins de 2 heures selon l'horloge de Sentry. Filtres :
+  le projet, les niveaux. Variables : nom du projet, titre, identifiant court,
+  niveau, lien du problème. Jamais à la première lecture d'un projet (les
+  problèmes déjà là ne sont pas « nouveaux ») ; la référence est gardée, donc un
+  redémarrage ne répète aucun problème et ne perd pas ceux apparus moins de 2 heures avant. Cinq problèmes par projet et
+  par lecture au plus (une rafale ne lance que cinq scènes).
+- **Pic d'erreurs Sentry** : un projet compte, dans la dernière heure, au moins
+  le seuil **et** trois fois son heure habituelle (la moyenne des heures
+  complètes de la veille). Une fois par pic : il ne se déclenche de nouveau qu'après
+  que les erreurs sont repassées sous la moitié du seuil. Pas à la première
+  lecture, ni après un long trou sans lecture (2 intervalles). Variables : nom
+  du projet, erreurs de la dernière heure, erreurs habituelles par heure,
+  seuil.
 
-## Tableau de bord
+Les scènes démarrent jusqu'à un intervalle de rafraîchissement après les faits.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+## Requêtes et limites
 
-## Dépannage
+Chaque tour envoie deux requêtes par projet (ses problèmes, ses erreurs), une
+à la fois, plus la liste des projets une fois par heure (et au tour suivant
+après une recherche dans Découverte). Avec 20 projets toutes les 10 minutes,
+cela fait environ 240 requêtes par heure. Sentry déconseille les interrogations
+fréquentes : gardez un intervalle long si vous suivez beaucoup de projets.
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- Les en-têtes de limite de débit de Sentry sont lus : quand plus aucune
+  requête ne reste dans la fenêtre de Sentry, la suivante attend la remise à
+  zéro (10 s au plus, sinon le reste du tour attend le tour suivant, qui
+  reprend là où il s'est arrêté).
+- **HTTP 429** ou **5xx** : toutes les requêtes attendent (le `Retry-After` de
+  Sentry, sinon 1 minute, doublée tant que cela dure, 6 heures au plus). La
+  pause est gardée après un redémarrage ; le bouton de test n'envoie rien
+  pendant ce temps.
+- Une lecture d'un projet qui échoue (HTTP 403, 404, réponse inattendue) est
+  espacée, en doublant jusqu'à une heure ; les autres projets continuent.
+- Les réponses sont bornées en taille (2 Mo pour la liste des projets) et en
+  durée (15 s) ; les redirections ne sont jamais suivies (le jeton suivrait).
+- Un redémarrage (ou une reconnexion de Gladys) ne lit jamais plus tôt que
+  l'intervalle : l'heure du dernier tour est gardée dans `/data`.
+
+## Erreurs
+
+- **Sentry a refusé le jeton (HTTP 401)** sur la liste des projets : plus rien
+  n'est envoyé, même après un redémarrage, jusqu'à ce que vous enregistriez un
+  nouveau jeton dans la configuration ou qu'un appui sur _Tester la connexion_
+  réussisse. Un 401 sur les problèmes ou les erreurs d'un seul projet n'est pas
+  pris pour un refus : la liste des projets est redemandée au tour suivant, et
+  seule sa réponse décide.
+- **HTTP 403** sur la liste des projets : il manque un droit au jeton
+  (org:read, project:read, event:read).
+- **HTTP 404** : mauvais slug d'organisation, ou mauvaise région (US / UE).
+- **Redirection non suivie** : souvent la mauvaise région, ou une URL http qui
+  redirige vers https.
+
+## Vie privée
+
+Gladys ne garde dans `/data` que l'heure du dernier tour, une pause demandée
+par Sentry, les identifiants et dates d'apparition des problèmes les plus
+récents (pour le déclencheur « nouveau problème ») et, après un refus, 8 bits
+d'une empreinte salée de la configuration refusée (trop peu pour aider à
+deviner un jeton ; effacés par un succès). Les titres des problèmes restent
+dans Gladys (états des appareils, variables de scène) : ils peuvent citer des
+données de vos applications.

@@ -5,80 +5,62 @@ contributors.
 
 ## What this is
 
-A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
-no build step) that runs in its own sandboxed Docker container and talks to
-Gladys through
-[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It started from the official JavaScript template.
+A Gladys Assistant **external integration** for Sentry: a Node.js service
+(Node 22+, ESM, no build step) in its own sandboxed Docker container, talking
+to Gladys through `@gladysassistant/integration-sdk`, its only runtime
+dependency, and to the Sentry API (sentry.io US / EU, or self-hosted) with a
+read-only personal auth token. Sentry is under the FSL: only its public API is
+called, nothing of its code is copied.
 
 ## Commands
 
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
-npm run lint                              # ESLint
-npm run format:check                      # Prettier, as the CI runs it
-npm run format                            # Prettier, fix in place
+node --test test/app.test.js              # one file
+npm run lint
+npm run format:check
 npx github:GladysAssistant/integration-store .   # store admission checks
+node scripts/mutants.mjs                  # mutation check (slow, use memcap)
 ```
-
-The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
-Node 22 and 24, and builds the Docker image: run the three commands before
-pushing.
 
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
-.github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
+index.js               SDK wiring only
+src/handlers.js        the SDK handlers -> the app (shared with the tests)
+src/app.js             SentryApp: rounds, pauses, refusal, triggers, status, Discovery
+src/config.js          configuration (token, region, URL, organization, projects), pure
+src/model.js           devices, features and states, pure
+src/triggers.js        new issue and error spike decisions, pure
+src/store.js           /data: last round, pause, refusal mark, trigger references
+src/i18n.js            statuses and messages (en, fr)
+src/sentry/http.js     the only network access (one GET, bounded, no redirect)
+src/sentry/client.js   the three documented endpoints, one request at a time
+src/sentry/parse.js    the answers and headers, read strictly
+test/                  node --test, fake Gladys, fake Sentry, fake and real clocks
+scripts/mutants.*      mutation check of the guards (not in the image)
 ```
 
 ## Rules
 
-- **External ids are forever.** Build them with
-  `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
-  platform gives the device (serial, cloud id, MAC), never a label. Gladys keys
-  devices, their history, scenes and dashboards on them: changing one creates a
-  new device and orphans the old one. The same goes for every key users store:
-  manifest `config_schema`, `actions`, widget and scene keys, feature keys.
-- **Every feature carries `name`, `min`, `max`, `read_only` and
-  `has_feedback`**, even where they mean nothing: Gladys stores them NOT NULL.
-  `min`/`max` are `0`/`1` for a binary feature, the real range for a numeric
-  one, `0`/`0` for a feature without a range (text, image...). A missing one
-  can pass the publication on a core that does not check it, then fail when
-  the user clicks "Add" (HTTP 422 `t_device_feature.min cannot be null`). The
-  SDK's fake Gladys refuses it on publication, and `test/devices.test.js`
-  checks them.
-- **The container rootfs is read-only.** Write only under `/data`, the one
-  writable volume. Never log tokens, passwords or API keys.
-- **Versions belong to the Release workflow** (Actions → Release). Never edit
-  `version` in `package.json` or in the manifest, nor the `docker_image` tag,
-  by hand — except on the README's hand-pushed tag path, which bumps all three
-  together before tagging. `test/manifest.test.js` checks they agree.
-- **Changelog.** Every user-visible change adds a line under `## [Unreleased]`
-  in `CHANGELOG.md` (`### Added`, `Changed`, `Fixed`, `Removed`, `Security`).
-  Never write a version heading: the Release workflow moves the section, and it
-  becomes the notes of the GitHub Release.
-- **Manifest.** Texts are multi-language objects `{ "en": ..., "fr": ... }`:
-  `label`, `description` and `placeholder` alike, never a plain string. The
-  catalog `description` holds 10 to 100 characters per language. A field the
-  older cores do not know needs a higher `gladys_version` minimum
-  (`categories`: 4.86.0; `widgets`, `scene_triggers`, `scene_actions`,
-  `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
-  code (defaults, action, scene and widget handlers): change both sides
-  together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
-- **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
-  in English. Tests never touch the network.
+- **External ids are forever**: `project:<Sentry project id>` and the feature
+  keys of `src/constants.js`; the scene trigger keys and their field and
+  variable keys. Never rename one.
+- **The token** goes in the `Authorization` header, to the configured origin
+  only; never in a URL, a log, a status, an error message nor `/data`.
+  Redirects are never followed.
+- **Unknown stays unknown**: an answer not as documented publishes nothing,
+  never a 0.
+- **Clocks**: the monotonic clock paces rounds, pauses and gaps; the wall
+  clock only dates `/data`; Sentry's `Date` header decides the age of an issue
+  and the rate limit reset. Every timer goes through `schedule()` (a finite,
+  capped delay, or none).
+- **Never faster than the interval**, even after a restart, a reconnection, a
+  Scan or the test button (one request a minute at most).
+- **Refusal** only on HTTP 401 of the project list; kept in `/data`; lifted
+  by a saved configuration or a successful test.
+- **Versions** belong to the Release workflow, except 0.1.0 set by hand.
+- **Changelog** under `## [Unreleased]`; user texts bilingual (en, fr).
+- **Style**: Prettier, ESLint; comments explain why, in English; tests never
+  touch the network beyond loopback, and every wait in a test is bounded.
