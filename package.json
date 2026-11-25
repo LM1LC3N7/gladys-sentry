@@ -1,6 +1,6 @@
 {
   "name": "gladys-sentry",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for Sentry (sentry.io US or EU, or self-hosted): unresolved issues and error counts of each project, \"new issue\" and \"error spike\" scene triggers, read only through the official Sentry API. Unofficial, not affiliated with Sentry.",
   "type": "module",

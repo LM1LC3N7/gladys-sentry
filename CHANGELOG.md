@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-25
+
 ### Added
 
 - First version, never tested with a real Sentry: the projects of a Sentry
@@ -18,4 +20,5 @@ the notes of the version's GitHub Release.
   hours and newest issue; "New Sentry issue" and "Sentry error spike" scene
   triggers; read only, with a personal auth token.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-sentry/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-sentry/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-sentry/releases/tag/v0.1.1
